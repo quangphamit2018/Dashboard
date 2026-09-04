@@ -155,6 +155,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .public-sync-status{ font-size:11px; color:var(--fg-sec); text-align:right; max-width:220px; }
   .public-sync-status.ok{ color:#1e7e34; }
   .public-sync-status.err{ color:#c0392b; }
+  .sync-freshness{ display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--fg-sec); white-space:nowrap; margin-top:2px; }
+  .sync-freshness .dot{ width:7px; height:7px; border-radius:50%; background:#1e7e34; flex:0 0 auto; }
+  .sync-freshness.warn{ color:#b8860b; font-weight:600; }
+  .sync-freshness.warn .dot{ background:#b8860b; }
+  .sync-freshness.stale{ color:#c0392b; font-weight:600; }
+  .sync-freshness.stale .dot{ background:#c0392b; }
 
   .slicer-row{ display:flex; gap:12px; flex-wrap:wrap; margin:14px 0; }
   .panel{
@@ -471,6 +477,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <input type="password" id="cfgToken" placeholder="Dán API Token tại đây">
       <label>Ngày hết hạn Token</label>
       <input type="date" id="cfgTokenExpiry">
+      <label>Giới hạn dữ liệu hiển thị (số ngày gần nhất)</label>
+      <input type="number" id="cfgDisplayDaysLimit" min="1" step="1" placeholder="Để trống = không giới hạn, tải toàn bộ ticket">
+      <div class="modal-note" style="margin-top:-8px;">
+        Chỉ tải về những ticket có ngày tạo trong N ngày gần nhất — giúp dashboard load nhanh hơn khi số lượng ticket lớn.
+        Để trống nếu muốn xem toàn bộ lịch sử như hiện tại.
+      </div>
       <div class="modal-actions">
         <button class="btn-secondary" id="testConnBtn">Kiểm tra kết nối Jira</button>
         <button class="btn-primary" id="saveCfgBtn">Lưu Token lên Supabase</button>
@@ -515,6 +527,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <div class="sync-box">
       <button id="publicSyncBtn" class="public-sync-btn">🔄 Đồng bộ dữ liệu</button>
       <div id="publicSyncStatus" class="public-sync-status"></div>
+      <div id="syncFreshness" class="sync-freshness" style="display:none;"><span class="dot"></span><span id="syncFreshnessLabel"></span></div>
     </div>
   </div>
 
@@ -1485,6 +1498,7 @@ async function openTokenModal(){
   document.getElementById('cfgEmail').value = '';
   document.getElementById('cfgToken').value = '';
   document.getElementById('cfgTokenExpiry').value = '';
+  document.getElementById('cfgDisplayDaysLimit').value = '';
   jiraTokenDirty = false;
   tokenModal.classList.add('open');
 
@@ -1500,6 +1514,9 @@ async function openTokenModal(){
     jiraTokenDirty = false; // set bằng code, không tính là người dùng đã sửa
     if(r.data[0].jira_token_expiry){
       document.getElementById('cfgTokenExpiry').value = String(r.data[0].jira_token_expiry).slice(0,10);
+    }
+    if(r.data[0].display_days_limit != null){
+      document.getElementById('cfgDisplayDaysLimit').value = r.data[0].display_days_limit;
     }
   }
 }
@@ -1588,6 +1605,18 @@ document.getElementById('saveCfgBtn').onclick = async ()=>{
   const sessionToken = getSessionToken();
   const s = document.getElementById('connStatus');
   if(!sessionToken){ s.className='conn-status err'; s.textContent='Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.'; return; }
+
+  const daysLimitRaw = document.getElementById('cfgDisplayDaysLimit').value.trim();
+  let daysLimit = null;
+  if(daysLimitRaw !== ''){
+    daysLimit = parseInt(daysLimitRaw, 10);
+    if(!Number.isFinite(daysLimit) || daysLimit < 1){
+      s.className='conn-status err'; s.style.display='block';
+      s.textContent = 'Giới hạn số ngày phải là số nguyên dương (>= 1), hoặc để trống nếu không giới hạn.';
+      return;
+    }
+  }
+
   s.className='conn-status'; s.style.display='block'; s.textContent='Đang lưu lên Supabase...';
   try{
     const r = await rpc('admin_save_config', {
@@ -1597,7 +1626,8 @@ document.getElementById('saveCfgBtn').onclick = async ()=>{
       // [SEC] Chỉ gửi token MỚI khi người dùng thực sự gõ lại ô Token; nếu không đụng vào
       // (vẫn đang hiện giá trị che từ server) thì gửi null để Supabase giữ nguyên token cũ.
       p_token: jiraTokenDirty ? document.getElementById('cfgToken').value.trim() : null,
-      p_token_expiry: document.getElementById('cfgTokenExpiry').value || null
+      p_token_expiry: document.getElementById('cfgTokenExpiry').value || null,
+      p_display_days_limit: daysLimit
     });
     if(r.ok && r.data === true){
       s.className='conn-status ok'; s.textContent='Đã lưu cấu hình lên Supabase thành công.';
@@ -1702,7 +1732,8 @@ async function runJiraSync(btn, statusEl, successClass, errClass){
     applyNewData(freshRows);
     DATA_SOURCE = 'jira'; DATA_FETCHED_AT = new Date().toISOString();
     const t = new Date(DATA_FETCHED_AT);
-    renderFooterNote(`Dashboard đồng bộ real-time từ Jira (qua Supabase) · ${freshRows.length.toLocaleString('vi-VN')} ticket · Đồng bộ lúc ${t.toLocaleString('vi-VN')}`);
+    const daysLimitNote2 = freshRows._displayDaysLimit ? ` · chỉ hiển thị ${freshRows._displayDaysLimit} ngày gần nhất` : '';
+    renderFooterNote(`Dashboard đồng bộ real-time từ Jira (qua Supabase) · ${freshRows.length.toLocaleString('vi-VN')} ticket${daysLimitNote2} · Đồng bộ lúc ${t.toLocaleString('vi-VN')}`);
     statusEl.classList.add(successClass);
     const modeLabel2 = mode === 'full' ? 'Đồng bộ toàn bộ' : 'Đồng bộ tăng dần';
     statusEl.textContent = `${modeLabel2} thành công: ${totalUpserted.toLocaleString('vi-VN')} ticket được ghi/cập nhật (qua ${round} lượt gọi). Dashboard hiện có ${freshRows.length.toLocaleString('vi-VN')} ticket.`;
@@ -1783,6 +1814,45 @@ async function fetchTokenExpiryPublic(){
     // Chưa có RPC public_get_token_expiry trên Supabase hoặc chưa cấu hình - bỏ qua âm thầm
   }
 }
+
+// [SEC/UX] Hiển thị đúng thời điểm SERVER đồng bộ Jira gần nhất (last_sync_at),
+// KHÁC với "Tải lúc"/"Đồng bộ lúc" ở footer (chỉ là giờ trình duyệt tải trang).
+// Cảnh báo màu nếu quá lâu chưa có lượt sync mới -> dấu hiệu cron job có thể đang lỗi.
+async function updateSyncFreshness(){
+  const el = document.getElementById('syncFreshness');
+  const labelEl = document.getElementById('syncFreshnessLabel');
+  if(!el || !labelEl) return;
+  try{
+    const r = await rpc('public_get_sync_status', {});
+    if(!(r.ok && r.data)){
+      el.style.display = 'none'; // RPC chưa deploy trên Supabase -> ẩn đi, không báo lỗi gây hoang mang
+      return;
+    }
+    const row = Array.isArray(r.data) ? r.data[0] : r.data;
+    const raw = row && row.last_sync_at;
+    if(!raw){
+      el.style.display = 'inline-flex';
+      el.className = 'sync-freshness warn';
+      el.title = '';
+      labelEl.textContent = 'Chưa có lượt đồng bộ Jira nào';
+      return;
+    }
+    const lastSync = new Date(raw);
+    const minutesAgo = Math.max(0, Math.round((Date.now() - lastSync.getTime()) / 60000));
+    const agoStr = minutesAgo === 0 ? 'vừa xong' : `${minutesAgo} phút trước`;
+    let cls = 'fresh';
+    if(minutesAgo > 45) cls = 'stale';
+    else if(minutesAgo > 20) cls = 'warn';
+    el.style.display = 'inline-flex';
+    el.className = 'sync-freshness ' + cls;
+    el.title = 'Đồng bộ Jira gần nhất: ' + lastSync.toLocaleString('vi-VN');
+    labelEl.textContent = `Cập nhật ${agoStr}`;
+  }catch(e){
+    el.style.display = 'none'; // lỗi mạng tạm thời - bỏ qua âm thầm, lần refresh sau sẽ tự thử lại
+  }
+}
+updateSyncFreshness();
+setInterval(updateSyncFreshness, 60000); // tự làm mới mỗi 60 giây, không cần tải lại trang
 
 renderFooterNote(currentFooterBaseText);
 fetchTokenExpiryPublic().then(()=> renderFooterNote(currentFooterBaseText));
@@ -1887,14 +1957,83 @@ function mapDbRowToDisplay(row){
   };
 }
 
+// [PERF] Lấy giới hạn số ngày hiển thị do Admin cấu hình (RPC public, không cần đăng nhập).
+// Trả về số nguyên dương, hoặc null nếu không giới hạn / chưa cấu hình / lỗi mạng.
+async function fetchDisplayDaysLimitPublic(){
+  try{
+    const r = await rpc('public_get_display_days_limit', {});
+    if(r.ok && r.data){
+      const row = Array.isArray(r.data) ? r.data[0] : r.data;
+      const v = row && row.display_days_limit;
+      if(v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+    }
+  }catch(e){ /* RPC chưa deploy hoặc lỗi mạng - coi như không giới hạn */ }
+  return null;
+}
+
+// Định dạng cutoff theo đúng kiểu chuỗi cột `created` đang lưu (naive datetime "YYYY-MM-DD HH:MM:SS")
+function formatCutoffForCreatedFilter(daysAgo){
+  const d = new Date(Date.now() - daysAgo * 86400000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 async function fetchAllTicketsFromSupabase(){
   const pageSize = 1000;
+  const headers = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer '+SUPABASE_ANON_KEY };
+
+  // [PERF] Chỉ truy vấn N ngày gần nhất nếu Admin đã cấu hình giới hạn - giảm hẳn dữ liệu
+  // phải tải thay vì tải hết rồi lọc ở trình duyệt.
+  const displayDaysLimit = await fetchDisplayDaysLimitPublic();
+  const createdFilter = displayDaysLimit ? `&created=gte.${encodeURIComponent(formatCutoffForCreatedFilter(displayDaysLimit))}` : '';
+
+  // [PERF] Bước 1: hỏi tổng số ticket qua header Content-Range (Prefer: count=exact),
+  // KHÔNG tải dữ liệu thật ở bước này (limit=1) - chỉ để biết cần bao nhiêu trang.
+  let total = null;
+  try{
+    const countResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/jira_tickets?select=ticket_key&limit=1${createdFilter}`,
+      { headers: { ...headers, Prefer: 'count=exact' } }
+    );
+    if(countResp.ok){
+      const contentRange = countResp.headers.get('content-range') || '';
+      const m = contentRange.match(/\/(\d+)$/);
+      if(m) total = parseInt(m[1], 10);
+    }
+  }catch(e){ /* bỏ qua - sẽ dùng fallback tuần tự bên dưới */ }
+
+  // [PERF] Bước 2: nếu biết tổng số -> tải TẤT CẢ các trang SONG SONG (nhanh hơn nhiều
+  // so với tuần tự từng trang một, đặc biệt khi số ticket đã lên tới hàng chục nghìn).
+  if(total !== null && total >= 0){
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const pagePromises = [];
+    for(let i = 0; i < pageCount; i++){
+      const offset = i * pageSize;
+      pagePromises.push(
+        fetch(`${SUPABASE_URL}/rest/v1/jira_tickets?select=*&order=created.asc&limit=${pageSize}&offset=${offset}${createdFilter}`, { headers })
+          .then(async resp=>{
+            if(!resp.ok) throw new Error('HTTP '+resp.status+' (trang offset='+offset+')');
+            const batch = await resp.json();
+            if(!Array.isArray(batch)) throw new Error('Phản hồi không hợp lệ (trang offset='+offset+')');
+            return batch;
+          })
+      );
+    }
+    const pages = await Promise.all(pagePromises);
+    const all = pages.flat();
+    const mapped = all.map(mapDbRowToDisplay);
+    mapped._displayDaysLimit = displayDaysLimit; // đính kèm để tryLoadFromSupabaseOnBoot ghi chú footer
+    return mapped;
+  }
+
+  // [FALLBACK] Không lấy được Content-Range (một số proxy/CDN có thể chặn header này)
+  // -> quay lại cách tải tuần tự cũ, chậm hơn nhưng vẫn đúng.
   let offset = 0;
   let all = [];
   while(true){
     const resp = await fetch(
-      `${SUPABASE_URL}/rest/v1/jira_tickets?select=*&order=created.asc&limit=${pageSize}&offset=${offset}`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer '+SUPABASE_ANON_KEY } }
+      `${SUPABASE_URL}/rest/v1/jira_tickets?select=*&order=created.asc&limit=${pageSize}&offset=${offset}${createdFilter}`,
+      { headers }
     );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     const batch = await resp.json();
@@ -1903,7 +2042,9 @@ async function fetchAllTicketsFromSupabase(){
     if(batch.length < pageSize) break;
     offset += pageSize;
   }
-  return all.map(mapDbRowToDisplay);
+  const mapped = all.map(mapDbRowToDisplay);
+  mapped._displayDaysLimit = displayDaysLimit;
+  return mapped;
 }
 
 async function tryLoadFromSupabaseOnBoot(){
@@ -1914,10 +2055,11 @@ async function tryLoadFromSupabaseOnBoot(){
   let loadFailed = false;
   try{
     const rows = await fetchAllTicketsFromSupabase();
+    const daysLimitNote = rows._displayDaysLimit ? ` · chỉ hiển thị ${rows._displayDaysLimit} ngày gần nhất` : '';
     if(rows.length > 0){
       applyNewData(rows);
       DATA_SOURCE = 'jira';
-      renderFooterNote(`Dashboard đọc trực tiếp từ Supabase (đã đồng bộ Jira trước đó) · ${rows.length.toLocaleString('vi-VN')} ticket · Tải lúc ${new Date().toLocaleString('vi-VN')}`);
+      renderFooterNote(`Dashboard đọc trực tiếp từ Supabase (đã đồng bộ Jira trước đó) · ${rows.length.toLocaleString('vi-VN')} ticket${daysLimitNote} · Tải lúc ${new Date().toLocaleString('vi-VN')}`);
       showToast(`Đã tải dữ liệu thành công: ${rows.length.toLocaleString('vi-VN')} ticket.`, 'success');
     }else{
       renderFooterNote(`Không có dữ liệu ticket nào trên Supabase tại thời điểm tải · ${new Date().toLocaleString('vi-VN')}`);
