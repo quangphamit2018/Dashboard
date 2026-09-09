@@ -969,6 +969,9 @@ const donutChart = new Chart(document.getElementById('donutChart'), {
 const TABLE_COLS = ['Ticket Key','Summary','Ticket Category/Type','Ticket Group','Ticket Level','Priority',
   'Description','Reporter','Status','Assignee','Created','FR_Deadline','FR_ProgressBar','FR_Breached','TTR_Deadline','TTR_ProgressBar','TTR_Breached','Cause','Resolution_Cf','Organizations',
   'Request Type','Resolved','Status Category','Updated','Ticket URL'];
+/* Cột hiển thị trên bảng giao diện (KHÔNG dùng cho export Excel - export vẫn dùng TABLE_COLS đầy đủ ở trên).
+   Bỏ cột "Ticket URL" riêng lẻ vì link đã được gắn thẳng vào ô "Ticket Key". */
+const DISPLAY_TABLE_COLS = TABLE_COLS.filter(c => c !== 'Ticket URL');
 
 const COL_LABELS = {
   'FR_Deadline':'Time Breached Response',
@@ -979,7 +982,7 @@ const COL_LABELS = {
   'TTR_Breached':'Breached Resolution'
 };
 const theadRow = document.getElementById('tableHeadRow');
-TABLE_COLS.forEach(c=>{
+DISPLAY_TABLE_COLS.forEach(c=>{
   const th = document.createElement('th');
   th.textContent = COL_LABELS[c] || c;
   th.onclick = ()=>{ sortCol = c; sortAsc = (sortCol===c)? !sortAsc : true; renderTable(); };
@@ -1442,20 +1445,30 @@ function fmtDurationVi(ms){
   return parts.join(' ');
 }
 
-function buildProgressCellHtml(startDate, deadlineStr){
+function buildProgressCellHtml(startDate, deadlineStr, breachedFlag){
   const info = computeDeadlineProgress(startDate, deadlineStr);
   if(!info) return '';
   const pct = info.pct;
   let color;
-  if(info.overdue) color = 'var(--bad)';
-  else if(pct>=85) color = '#f39c12';
-  else color = 'var(--good)';
+  if(breachedFlag==='Yes'){
+    // Breached = Yes -> luôn đỏ để cảnh báo vi phạm SLA
+    color = 'var(--bad)';
+  } else if(breachedFlag==='No'){
+    // Breached = No -> dùng màu khác (xanh dương) để phân biệt rõ với trường hợp vi phạm
+    color = 'var(--c1)';
+  } else if(info.overdue){
+    color = 'var(--bad)';
+  } else if(pct>=85){
+    color = '#f39c12';
+  } else {
+    color = 'var(--good)';
+  }
   const label = info.overdue
     ? `Quá hạn ${fmtDurationVi(info.remainingMs)}`
     : `Còn lại ${fmtDurationVi(info.remainingMs)}`;
   return `<div class="progress-wrap${info.overdue?' is-overdue':''}" title="${esc(label)} (${pct.toFixed(0)}%)">
       <div class="progress-track"><div class="progress-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
-      <div class="progress-pct">${pct.toFixed(0)}%</div>
+      <div class="progress-pct" style="color:${color}">${pct.toFixed(0)}%</div>
     </div>`;
 }
 
@@ -1484,13 +1497,20 @@ function renderTable(){
   tbody.innerHTML = '';
   pageRows.forEach(d=>{
     const tr = document.createElement('tr');
-    TABLE_COLS.forEach(c=>{
+    DISPLAY_TABLE_COLS.forEach(c=>{
       const td = document.createElement('td');
       if(c==='Status'){
         const color = STATUS_COLORS[d.Status] || '#999';
         td.innerHTML = `<span class="badge" style="background:${esc(color)}">${esc(d.Status||'')}</span>`;
-      } else if(c==='Ticket URL' && d[c]){
-        td.innerHTML = `<a class="tlink" href="${esc(safeUrl(d[c]))}" target="_blank" rel="noopener noreferrer">Mở ticket</a>`;
+      } else if(c==='Ticket Key'){
+        const key = d[c] || '';
+        const url = d['Ticket URL'];
+        if(key && url){
+          td.innerHTML = `<a class="tlink" href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" title="${esc(key)}">${esc(key)}</a>`;
+        } else {
+          td.textContent = key;
+          td.title = key;
+        }
       } else if(c==='FR_Breached' || c==='TTR_Breached'){
         if(d[c]==='Yes'){
           td.innerHTML = `<span class="badge" style="background:var(--bad)">Yes</span>`;
@@ -1504,9 +1524,9 @@ function renderTable(){
         td.textContent = disp;
         td.title = disp;
       } else if(c==='FR_ProgressBar'){
-        td.innerHTML = buildProgressCellHtml(d._created, d.FR_Deadline);
+        td.innerHTML = buildProgressCellHtml(d._created, d.FR_Deadline, d.FR_Breached);
       } else if(c==='TTR_ProgressBar'){
-        td.innerHTML = buildProgressCellHtml(d._created, d.TTR_Deadline);
+        td.innerHTML = buildProgressCellHtml(d._created, d.TTR_Deadline, d.TTR_Breached);
       } else {
         td.textContent = d[c] || '';
         td.title = d[c] || '';
