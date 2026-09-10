@@ -480,7 +480,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .us-progress-done .us-progress-pulse{ animation:none; background:#1e7e34; }
   .us-empty{ padding:30px; text-align:center; color:#999; font-size:13px; }
   .us-log-item{ font-size:12px; border-bottom:1px solid #f0f0f0; padding:6px 4px; }
-  textarea.us-json{ width:100%; min-height:160px; font-family:monospace; font-size:12px; box-sizing:border-box; padding:8px; border:1px solid #ddd; border-radius:6px; }
+  textarea.us-json{ width:100%; min-height:260px; font-family:monospace; font-size:12px; box-sizing:border-box; padding:8px; border:1px solid #ddd; border-radius:6px; }
+
+  /* ============ Rule / Alias Dictionary — 2 chế độ (UI / JSON) ============ */
+  .us-mode-switch{ display:flex; gap:8px; margin-bottom:14px; }
+  .us-mode-btn{ border:1px solid #d9d9e3; background:#fff; color:#555; font-size:13px; font-weight:600; padding:8px 16px; border-radius:8px; cursor:pointer; }
+  .us-mode-btn.active{ background:var(--brand-gradient,#123a5e); color:#fff; border-color:transparent; }
+  .us-rule-block{ border:1px solid #eee; border-radius:8px; padding:12px 14px; margin-bottom:12px; background:#fafbfc; }
+  .us-rule-block-head{ display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .us-rule-block-head b{ font-size:13.5px; color:#222; }
+  .us-rule-hint{ font-size:11.5px; color:#999; }
+  .us-tag-list{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; min-height:24px; }
+  .us-tag{ background:#eef1f5; border-radius:14px; padding:4px 4px 4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+  .us-tag-del{ border:none; background:none; cursor:pointer; color:#999; font-size:13px; line-height:1; padding:2px 5px; border-radius:50%; }
+  .us-tag-del:hover{ color:#fff; background:#c0392b; }
+  .us-rule-item{ border:1px solid #e6e6e6; border-radius:8px; padding:10px 12px; background:#fff; margin-bottom:10px; }
+  .us-rule-item-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .us-rule-action-input{ flex:1; font-weight:600; font-size:13px; padding:7px 9px; border:1px solid #ddd; border-radius:6px; min-width:0; }
+  .us-rule-item-actions{ display:flex; gap:4px; flex-shrink:0; }
+  .us-icon-btn{ border:1px solid #ddd; background:#fff; border-radius:6px; padding:5px 9px; cursor:pointer; font-size:12px; line-height:1; }
+  .us-icon-btn:hover{ background:#f2f3f5; }
+  .us-icon-btn-danger{ color:#c0392b; border-color:#f2c9c4; }
+  .us-icon-btn-danger:hover{ background:#fdecea; }
+  .us-alias-new-input, .us-region-new-input{ padding:7px 9px; border:1px solid #ddd; border-radius:6px; font-size:12px; }
+  .us-priority-empty{ font-size:12px; color:#999; padding:6px 2px; }
 </style>
 </head>
 <body>
@@ -791,13 +814,57 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <div class="us-panel" id="usRulesPanel" style="display:none;">
       <h3>⚙ Rule / Alias Dictionary (chỉnh sửa được — KHÔNG sửa code lõi)</h3>
       <div class="us-row" style="font-size:12px;color:#888;">
-        Chỉnh sửa JSON bên dưới để thêm/bớt alias hoặc đổi thứ tự ưu tiên (mảng <code>priorityOrder</code>: đứng trước = ưu tiên cao hơn).
-        Chỉ áp dụng cho phiên làm việc hiện tại — dùng "Xuất JSON" để lưu lại, "Nhập JSON" để nạp lại lần sau.
+        Chỉnh ở chế độ <b>Giao diện</b> hoặc <b>JSON</b> — hai bên luôn tự đồng bộ với nhau theo thời gian thực.
+        Thứ tự trong "Ưu tiên Action/Alias": đứng trước = ưu tiên khớp trước. Chỉ áp dụng cho phiên làm việc hiện tại —
+        dùng "Xuất JSON" để lưu lại, "Nhập JSON" để nạp lại lần sau.
       </div>
-      <textarea class="us-json" id="usRulesJson"></textarea>
-      <div class="us-row">
-        <button class="us-btn us-btn-secondary" id="usApplyRulesBtn">Áp dụng</button>
-        <button class="us-btn us-btn-secondary" id="usResetRulesBtn">Khôi phục mặc định</button>
+
+      <div class="us-mode-switch">
+        <button type="button" class="us-mode-btn active" id="usModeUiBtn">🧩 Giao diện (UI)</button>
+        <button type="button" class="us-mode-btn" id="usModeJsonBtn">{ } JSON</button>
+      </div>
+
+      <!-- ===== Chế độ Giao diện ===== -->
+      <div id="usRulesUiMode">
+        <div class="us-rule-block">
+          <div class="us-rule-block-head">
+            <b>🌍 Vùng (Region)</b>
+            <span class="us-rule-hint">Mã vùng dùng để nhận diện trong Summary (VD: NE, HN, CP...)</span>
+          </div>
+          <div class="us-tag-list" id="usRegionsList"></div>
+          <div class="us-row" style="margin-bottom:0;">
+            <input type="text" class="us-region-new-input" id="usRegionNewInput" placeholder="Thêm mã vùng mới..." style="max-width:200px;">
+            <button type="button" class="us-btn us-btn-secondary" id="usRegionAddBtn">+ Thêm vùng</button>
+          </div>
+        </div>
+
+        <div class="us-rule-block">
+          <div class="us-rule-block-head">
+            <b>🏷 Thứ tự ưu tiên Action / Alias</b>
+            <span class="us-rule-hint">Đứng trước = ưu tiên khớp trước. Dùng ▲▼ để đổi thứ tự ưu tiên.</span>
+          </div>
+          <div id="usPriorityList"></div>
+          <div class="us-row" style="margin-bottom:0;">
+            <button type="button" class="us-btn us-btn-secondary" id="usAddRuleBtn">+ Thêm Action mới</button>
+          </div>
+        </div>
+
+        <div class="us-rule-block">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="usSpaceBeforeUnderscoreChk">
+            Thêm khoảng trắng trước dấu "_" khi sinh Summary mới (VD: "Call Cycle _10.09.2026" thay vì "Call Cycle_10.09.2026")
+          </label>
+        </div>
+      </div>
+
+      <!-- ===== Chế độ JSON ===== -->
+      <div id="usRulesJsonMode" style="display:none;">
+        <textarea class="us-json" id="usRulesJson"></textarea>
+      </div>
+
+      <div class="us-row" style="margin-top:2px;">
+        <button class="us-btn us-btn-primary" id="usApplyRulesBtn">✅ Áp dụng</button>
+        <button class="us-btn us-btn-secondary" id="usResetRulesBtn">↺ Khôi phục mặc định</button>
         <button class="us-btn us-btn-secondary" id="usExportRulesBtn">⬇ Xuất JSON</button>
         <label class="us-btn us-btn-secondary" style="margin:0;">⬆ Nhập JSON<input type="file" id="usImportRulesInput" accept=".json" style="display:none;"></label>
         <span id="usRulesStatus" style="font-size:12px;color:#888;"></span>
@@ -3071,41 +3138,253 @@ document.getElementById('usBulkUpdateBtn').addEventListener('click', async ()=>{
   }
 });
 
-/* ---- 10. Rule / Alias Dictionary panel ---- */
+/* ---- 10. Rule / Alias Dictionary panel (2 chế độ: Giao diện <-> JSON, luôn đồng bộ) ---- */
+
+// Bản nháp đang chỉnh trong panel (chưa "Áp dụng" thì chưa ảnh hưởng US_RULES đang chạy)
+let usRulesDraft = null;
+let usRulesMode = 'ui'; // 'ui' | 'json'
+
+function usEscapeHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Đồng bộ: Draft -> ô JSON (gọi mỗi khi UI form thay đổi)
+function usSyncJsonFromDraft(){
+  const jsonEl = document.getElementById('usRulesJson');
+  if(jsonEl) jsonEl.value = JSON.stringify(usRulesDraft, null, 2);
+}
+
+// Đồng bộ: ô JSON -> Draft (gọi khi người dùng gõ JSON). Trả về true nếu JSON hợp lệ.
+function usTryParseJsonIntoDraft(showStatus){
+  const statusEl = document.getElementById('usRulesStatus');
+  try{
+    const parsed = JSON.parse(document.getElementById('usRulesJson').value);
+    if(!parsed.regions || !Array.isArray(parsed.regions)) throw new Error('JSON thiếu trường "regions" (mảng).');
+    if(!parsed.priorityOrder || !Array.isArray(parsed.priorityOrder)) throw new Error('JSON thiếu trường "priorityOrder" (mảng).');
+    usRulesDraft = parsed;
+    if(showStatus){ statusEl.textContent = ''; }
+    return true;
+  }catch(e){
+    if(showStatus){
+      statusEl.textContent = 'JSON không hợp lệ: ' + e.message;
+      statusEl.style.color = '#c0392b';
+    }
+    return false;
+  }
+}
+
+// Chuyển chế độ hiển thị (không mất dữ liệu — cùng đọc/ghi vào usRulesDraft)
+function usSetRulesMode(mode){
+  if(mode === 'json' && usRulesMode === 'ui') usSyncJsonFromDraft();
+  if(mode === 'ui' && usRulesMode === 'json'){
+    if(!usTryParseJsonIntoDraft(true)) return; // JSON lỗi thì chưa cho chuyển sang UI (tránh mất dữ liệu)
+  }
+  usRulesMode = mode;
+  document.getElementById('usModeUiBtn').classList.toggle('active', mode === 'ui');
+  document.getElementById('usModeJsonBtn').classList.toggle('active', mode === 'json');
+  document.getElementById('usRulesUiMode').style.display = mode === 'ui' ? '' : 'none';
+  document.getElementById('usRulesJsonMode').style.display = mode === 'json' ? '' : 'none';
+  if(mode === 'ui') usRenderRulesUi();
+}
+document.getElementById('usModeUiBtn').addEventListener('click', ()=> usSetRulesMode('ui'));
+document.getElementById('usModeJsonBtn').addEventListener('click', ()=> usSetRulesMode('json'));
+
+// Người dùng gõ trực tiếp vào ô JSON -> cập nhật draft ngay (để lúc quay lại UI có dữ liệu mới nhất)
+document.getElementById('usRulesJson').addEventListener('input', ()=>{
+  usTryParseJsonIntoDraft(true);
+});
+
+/* ---- Render toàn bộ form Giao diện từ usRulesDraft ---- */
+function usRenderRulesUi(){
+  usRenderRegionsUi();
+  usRenderPriorityUi();
+  const chk = document.getElementById('usSpaceBeforeUnderscoreChk');
+  if(chk) chk.checked = !!usRulesDraft.spaceBeforeUnderscore;
+}
+
+function usRenderRegionsUi(){
+  const wrap = document.getElementById('usRegionsList');
+  wrap.innerHTML = '';
+  (usRulesDraft.regions || []).forEach((region, idx)=>{
+    const tag = document.createElement('span');
+    tag.className = 'us-tag';
+    tag.innerHTML = `${usEscapeHtml(region)} <button type="button" class="us-tag-del" title="Xoá vùng này">×</button>`;
+    tag.querySelector('.us-tag-del').addEventListener('click', ()=>{
+      usRulesDraft.regions.splice(idx, 1);
+      usRenderRegionsUi();
+      usSyncJsonFromDraft();
+    });
+    wrap.appendChild(tag);
+  });
+  if(!usRulesDraft.regions || usRulesDraft.regions.length === 0){
+    wrap.innerHTML = '<span class="us-priority-empty">Chưa có vùng nào.</span>';
+  }
+}
+
+function usAddRegionFromInput(){
+  const input = document.getElementById('usRegionNewInput');
+  const value = input.value.trim().toUpperCase();
+  if(!value) return;
+  usRulesDraft.regions = usRulesDraft.regions || [];
+  if(!usRulesDraft.regions.includes(value)) usRulesDraft.regions.push(value);
+  input.value = '';
+  usRenderRegionsUi();
+  usSyncJsonFromDraft();
+}
+document.getElementById('usRegionAddBtn').addEventListener('click', usAddRegionFromInput);
+document.getElementById('usRegionNewInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); usAddRegionFromInput(); }
+});
+
+function usRenderPriorityUi(){
+  const wrap = document.getElementById('usPriorityList');
+  wrap.innerHTML = '';
+  const rules = usRulesDraft.priorityOrder || [];
+  if(rules.length === 0){
+    wrap.innerHTML = '<div class="us-priority-empty">Chưa có Action nào — bấm "+ Thêm Action mới" để bắt đầu.</div>';
+    return;
+  }
+  rules.forEach((rule, idx)=>{
+    const item = document.createElement('div');
+    item.className = 'us-rule-item';
+    item.innerHTML = `
+      <div class="us-rule-item-head">
+        <span style="font-size:11px;color:#999;flex-shrink:0;">#${idx+1}</span>
+        <input type="text" class="us-rule-action-input" value="${usEscapeHtml(rule.action || '')}" placeholder="Tên Action...">
+        <div class="us-rule-item-actions">
+          <button type="button" class="us-icon-btn" data-act="up" title="Tăng ưu tiên (đưa lên)">▲</button>
+          <button type="button" class="us-icon-btn" data-act="down" title="Giảm ưu tiên (đưa xuống)">▼</button>
+          <button type="button" class="us-icon-btn us-icon-btn-danger" data-act="del" title="Xoá Action này">🗑</button>
+        </div>
+      </div>
+      <div class="us-tag-list us-alias-list"></div>
+      <div class="us-row" style="margin-bottom:0;">
+        <input type="text" class="us-alias-new-input" placeholder="Thêm alias mới...">
+        <button type="button" class="us-btn us-btn-secondary us-alias-add-btn">+ Thêm alias</button>
+      </div>
+    `;
+
+    item.querySelector('.us-rule-action-input').addEventListener('input', (e)=>{
+      rule.action = e.target.value;
+      usSyncJsonFromDraft();
+    });
+    item.querySelector('[data-act="up"]').addEventListener('click', ()=>{
+      if(idx === 0) return;
+      const arr = usRulesDraft.priorityOrder;
+      [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
+      usRenderPriorityUi();
+      usSyncJsonFromDraft();
+    });
+    item.querySelector('[data-act="down"]').addEventListener('click', ()=>{
+      const arr = usRulesDraft.priorityOrder;
+      if(idx === arr.length - 1) return;
+      [arr[idx+1], arr[idx]] = [arr[idx], arr[idx+1]];
+      usRenderPriorityUi();
+      usSyncJsonFromDraft();
+    });
+    item.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+      if(!confirm(`Xoá Action "${rule.action || '(chưa đặt tên)'}" khỏi danh sách?`)) return;
+      usRulesDraft.priorityOrder.splice(idx, 1);
+      usRenderPriorityUi();
+      usSyncJsonFromDraft();
+    });
+
+    const aliasWrap = item.querySelector('.us-alias-list');
+    (rule.aliases || []).forEach((alias, aIdx)=>{
+      const tag = document.createElement('span');
+      tag.className = 'us-tag';
+      tag.innerHTML = `${usEscapeHtml(alias)} <button type="button" class="us-tag-del" title="Xoá alias này">×</button>`;
+      tag.querySelector('.us-tag-del').addEventListener('click', ()=>{
+        rule.aliases.splice(aIdx, 1);
+        usRenderPriorityUi();
+        usSyncJsonFromDraft();
+      });
+      aliasWrap.appendChild(tag);
+    });
+    if(!rule.aliases || rule.aliases.length === 0){
+      aliasWrap.innerHTML = '<span class="us-priority-empty">Chưa có alias nào.</span>';
+    }
+
+    const addAliasInput = item.querySelector('.us-alias-new-input');
+    const doAddAlias = ()=>{
+      const value = addAliasInput.value.trim().toUpperCase();
+      if(!value) return;
+      rule.aliases = rule.aliases || [];
+      if(!rule.aliases.includes(value)) rule.aliases.push(value);
+      addAliasInput.value = '';
+      usRenderPriorityUi();
+      usSyncJsonFromDraft();
+    };
+    item.querySelector('.us-alias-add-btn').addEventListener('click', doAddAlias);
+    addAliasInput.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){ e.preventDefault(); doAddAlias(); }
+    });
+
+    wrap.appendChild(item);
+  });
+}
+
+document.getElementById('usAddRuleBtn').addEventListener('click', ()=>{
+  usRulesDraft.priorityOrder = usRulesDraft.priorityOrder || [];
+  usRulesDraft.priorityOrder.push({ action: 'Action mới', aliases: [] });
+  usRenderPriorityUi();
+  usSyncJsonFromDraft();
+});
+
+document.getElementById('usSpaceBeforeUnderscoreChk').addEventListener('change', (e)=>{
+  usRulesDraft.spaceBeforeUnderscore = e.target.checked;
+  usSyncJsonFromDraft();
+});
+
+/* ---- Mở/đóng panel ---- */
 document.getElementById('usToggleRulesBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('usRulesPanel');
   const show = panel.style.display === 'none';
   panel.style.display = show ? '' : 'none';
-  if(show) document.getElementById('usRulesJson').value = JSON.stringify(US_RULES, null, 2);
-});
-document.getElementById('usApplyRulesBtn').addEventListener('click', ()=>{
-  const statusEl = document.getElementById('usRulesStatus');
-  try{
-    const parsed = JSON.parse(document.getElementById('usRulesJson').value);
-    if(!parsed.regions || !parsed.priorityOrder) throw new Error('JSON thiếu trường "regions" hoặc "priorityOrder".');
-    US_RULES = parsed;
-    usSaveRules();
-    statusEl.textContent = 'Đã áp dụng rule mới. Bấm "Chạy đối chiếu" lại để cập nhật Preview.';
-    statusEl.style.color = '#1e7e34';
-  }catch(e){
-    statusEl.textContent = 'JSON không hợp lệ: ' + e.message;
-    statusEl.style.color = '#c0392b';
+  if(show){
+    usRulesDraft = JSON.parse(JSON.stringify(US_RULES));
+    usSetRulesMode(usRulesMode); // đảm bảo nút/khối hiển thị đúng theo mode hiện tại
+    usRenderRulesUi();
+    usSyncJsonFromDraft();
+    document.getElementById('usRulesStatus').textContent = '';
   }
 });
-document.getElementById('usResetRulesBtn').addEventListener('click', ()=>{
-  US_RULES = usDefaultRules();
+
+/* ---- Áp dụng / Khôi phục / Xuất / Nhập — luôn thao tác trên usRulesDraft ---- */
+document.getElementById('usApplyRulesBtn').addEventListener('click', ()=>{
+  const statusEl = document.getElementById('usRulesStatus');
+  if(usRulesMode === 'json' && !usTryParseJsonIntoDraft(true)) return;
+  if(!usRulesDraft || !usRulesDraft.regions || !usRulesDraft.priorityOrder){
+    statusEl.textContent = 'Thiếu trường "regions" hoặc "priorityOrder".';
+    statusEl.style.color = '#c0392b';
+    return;
+  }
+  US_RULES = JSON.parse(JSON.stringify(usRulesDraft));
   usSaveRules();
-  document.getElementById('usRulesJson').value = JSON.stringify(US_RULES, null, 2);
+  statusEl.textContent = 'Đã áp dụng rule mới. Bấm "Chạy đối chiếu" lại để cập nhật Preview.';
+  statusEl.style.color = '#1e7e34';
+});
+
+document.getElementById('usResetRulesBtn').addEventListener('click', ()=>{
+  usRulesDraft = usDefaultRules();
+  US_RULES = JSON.parse(JSON.stringify(usRulesDraft));
+  usSaveRules();
+  usRenderRulesUi();
+  usSyncJsonFromDraft();
   document.getElementById('usRulesStatus').textContent = 'Đã khôi phục rule mặc định.';
   document.getElementById('usRulesStatus').style.color = '#1e7e34';
 });
+
 document.getElementById('usExportRulesBtn').addEventListener('click', ()=>{
-  const blob = new Blob([JSON.stringify(US_RULES, null, 2)], { type:'application/json' });
+  if(usRulesMode === 'json') usTryParseJsonIntoDraft(true);
+  const dataToExport = usRulesDraft || US_RULES;
+  const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `update_summary_rules_${Date.now()}.json`;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
+
 document.getElementById('usImportRulesInput').addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
@@ -3113,9 +3392,12 @@ document.getElementById('usImportRulesInput').addEventListener('change', (e)=>{
   reader.onload = () => {
     try{
       const parsed = JSON.parse(reader.result);
-      US_RULES = parsed; usSaveRules();
-      document.getElementById('usRulesJson').value = JSON.stringify(US_RULES, null, 2);
-      document.getElementById('usRulesStatus').textContent = 'Đã nhập rule từ file JSON.';
+      if(!parsed.regions || !Array.isArray(parsed.regions)) throw new Error('JSON thiếu trường "regions" (mảng).');
+      if(!parsed.priorityOrder || !Array.isArray(parsed.priorityOrder)) throw new Error('JSON thiếu trường "priorityOrder" (mảng).');
+      usRulesDraft = parsed;
+      usRenderRulesUi();
+      usSyncJsonFromDraft();
+      document.getElementById('usRulesStatus').textContent = 'Đã nhập rule từ file JSON — bấm "Áp dụng" để chính thức sử dụng.';
       document.getElementById('usRulesStatus').style.color = '#1e7e34';
     }catch(err){
       document.getElementById('usRulesStatus').textContent = 'File JSON không hợp lệ: ' + err.message;
