@@ -3466,6 +3466,42 @@ document.getElementById('usExportLogBtn').addEventListener('click', ()=>{
 });
 
 tryLoadFromSupabaseOnBoot();
+
+/* ======================================================================
+   ============ AUTO-REFRESH: tự động đồng bộ Jira mỗi 15 phút ============
+   Không chỉ đợi người dùng F5 - cứ mỗi 15 phút, dashboard tự gọi lại
+   Supabase để lấy dữ liệu ticket mới nhất và cập nhật ngay cho người
+   đang xem (KPI, 3 biểu đồ, bảng dữ liệu), đồng thời báo cho họ biết
+   bằng toast + cập nhật dòng chữ ở footer.
+   Filter (ngày/app/agent/status...) người dùng đang chọn KHÔNG bị mất,
+   vì applyNewData() đã tự khôi phục lại state đã lưu (restoreFilterState()).
+   ====================================================================== */
+const AUTO_REFRESH_MS = 15 * 60 * 1000; // 15 phút
+let autoRefreshInFlight = false; // tránh 2 lần refresh chồng nhau nếu mạng chậm
+
+async function autoRefreshFromSupabase(){
+  if(autoRefreshInFlight) return;
+  autoRefreshInFlight = true;
+  try{
+    const rows = await fetchAllTicketsFromSupabase();
+    if(rows.length > 0){
+      applyNewData(rows);
+      DATA_SOURCE = 'jira';
+      const daysLimitNote = rows._displayDaysLimit ? ` · chỉ hiển thị ${rows._displayDaysLimit} ngày gần nhất` : '';
+      renderFooterNote(`Dashboard đọc trực tiếp từ Supabase (đã đồng bộ Jira trước đó) · ${rows.length.toLocaleString('vi-VN')} ticket${daysLimitNote} · Tự động cập nhật lúc ${new Date().toLocaleString('vi-VN')}`);
+      showToast(`Đã tự động cập nhật dữ liệu Jira mới nhất: ${rows.length.toLocaleString('vi-VN')} ticket.`, 'success');
+    }
+    // Nếu Supabase trả về 0 dòng (hiếm khi xảy ra), giữ nguyên dữ liệu đang hiển thị,
+    // không xoá bảng/biểu đồ của người dùng đang xem giữa chừng.
+  }catch(e){
+    console.warn('[auto-refresh] load failed:', e && e.message);
+    showToast('Tự động đồng bộ Jira thất bại (có thể do mất mạng). Sẽ tự thử lại sau 15 phút.', 'error');
+  }finally{
+    autoRefreshInFlight = false;
+  }
+}
+
+setInterval(autoRefreshFromSupabase, AUTO_REFRESH_MS);
 </script>
 </body>
 </html>
