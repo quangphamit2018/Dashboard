@@ -2383,8 +2383,11 @@ document.getElementById('dupCreateBtn').addEventListener('click', async ()=>{
       return;
     }
     if(!resp.ok || !data || !data.ok){
-      const detail = data && (data.error || JSON.stringify(data.detail));
-      dupSetStatus('dupStatus', 'Thất bại: ' + (detail || `HTTP ${resp.status}`), 'err');
+      const errMsg = data && data.error ? data.error : `HTTP ${resp.status}`;
+      const detailStr = data && data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : '';
+      const fullMsg = detailStr ? `${errMsg}\n\nChi tiết: ${detailStr}` : errMsg;
+      dupSetStatus('dupStatus', 'Thất bại: ' + fullMsg, 'err');
+      console.error('[Duplicate Ticket] Lỗi đầy đủ:', data);
       await dupLoadLog();
       return;
     }
