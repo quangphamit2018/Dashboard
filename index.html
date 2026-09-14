@@ -948,8 +948,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <div class="us-panel">
       <h3 style="font-size:14px;">⚙ Quản lý danh sách Assignee</h3>
       <p style="font-size:12px;color:#888;margin:4px 0 10px;">
-        Thêm người bằng <b>tên hiển thị</b> + <b>Jira accountId</b> thật. Lấy accountId qua
-        <code>GET /rest/api/2/user/search?query=Ten</code> trên Jira (không gọi được từ trình duyệt do CORS, dùng Postman).
+        Danh sách người có thể chọn làm Assignee khi tạo ticket mới.
+      </p>
+      <p style="font-size:12px;color:#888;margin:4px 0 10px;">
+        Không biết accountId? Gõ tên vào ô tìm kiếm bên dưới, bấm "🔍 Tìm trên Jira", rồi click vào
+        kết quả đúng để tự điền accountId.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" id="dupUserSearchInput" placeholder="Gõ tên/email cần tìm trên Jira, vd: Quang Pham"
+          style="flex:1;min-width:260px;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+        <button class="us-btn us-btn-secondary" id="dupUserSearchBtn">🔍 Tìm trên Jira</button>
+      </div>
+      <div id="dupUserSearchStatus" style="margin-top:6px;font-size:12px;display:none;padding:8px 10px;border-radius:6px;"></div>
+      <div id="dupUserSearchResults" style="margin-top:6px;"></div>
+
+      <p style="font-size:12px;color:#888;margin:14px 0 10px;">
+        Hoặc điền tay: <b>tên hiển thị</b> + <b>Jira accountId</b>.
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input type="text" id="dupNewAssigneeName" placeholder="Tên hiển thị, vd: Quang Pham"
@@ -2190,6 +2204,74 @@ async function dupLoadAssignees(){
   });
   if(!r.data.length) dupSetStatus('dupAssigneeStatus', 'Chưa có assignee nào — thêm ở form trên.', 'info');
   else dupClearStatus('dupAssigneeStatus');
+}
+
+/* ---- Tìm user trên Jira để lấy accountId (không cần Postman) ---- */
+const DUP_SEARCH_EDGE_FUNCTION = 'jira-search-user';
+
+document.getElementById('dupUserSearchBtn').addEventListener('click', dupSearchJiraUser);
+document.getElementById('dupUserSearchInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); dupSearchJiraUser(); }
+});
+
+async function dupSearchJiraUser(){
+  const sessionToken = getSessionToken();
+  if(!sessionToken){ showToast('Phiên đăng nhập Admin đã hết hạn, vui lòng đăng nhập lại.', 'error'); return; }
+
+  const query = document.getElementById('dupUserSearchInput').value.trim();
+  const resultsEl = document.getElementById('dupUserSearchResults');
+  resultsEl.innerHTML = '';
+  if(query.length < 2){
+    dupSetStatus('dupUserSearchStatus', 'Gõ tối thiểu 2 ký tự.', 'err');
+    return;
+  }
+
+  dupSetStatus('dupUserSearchStatus', 'Đang tìm trên Jira...', 'info');
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/${DUP_SEARCH_EDGE_FUNCTION}`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ session_token: sessionToken, query })
+    });
+    const data = await resp.json().catch(()=>null);
+
+    if(resp.status === 401){
+      dupSetStatus('dupUserSearchStatus', 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'err');
+      return;
+    }
+    if(!resp.ok || !data || !data.ok){
+      dupSetStatus('dupUserSearchStatus', 'Lỗi: ' + (data && data.error || `HTTP ${resp.status}`), 'err');
+      return;
+    }
+    if(!data.results.length){
+      dupSetStatus('dupUserSearchStatus', 'Không tìm thấy user nào khớp.', 'info');
+      return;
+    }
+    dupClearStatus('dupUserSearchStatus');
+    resultsEl.innerHTML = data.results.map(u => `
+      <div class="dup-user-result" style="padding:8px 10px;border:1px solid #eee;border-radius:6px;margin-top:6px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;"
+        data-name="${dupEsc(u.displayName)}" data-account-id="${dupEsc(u.accountId)}"
+        onmouseover="this.style.background='#f5f7fa'" onmouseout="this.style.background=''"
+        onclick="dupPickSearchedUser(this)">
+        <span><b>${dupEsc(u.displayName)}</b>${u.emailAddress ? ' — ' + dupEsc(u.emailAddress) : ''}${u.active === false ? ' <span style="color:#c0392b;">(inactive)</span>' : ''}</span>
+        <code style="color:#888;">${dupEsc(u.accountId)}</code>
+      </div>
+    `).join('');
+  }catch(e){
+    dupSetStatus('dupUserSearchStatus', 'Lỗi kết nối: ' + e.message, 'err');
+  }
+}
+
+function dupPickSearchedUser(el){
+  const name = el.getAttribute('data-name');
+  const accountId = el.getAttribute('data-account-id');
+  document.getElementById('dupNewAssigneeName').value = name;
+  document.getElementById('dupNewAssigneeAccountId').value = accountId;
+  showToast(`Đã điền "${name}" — bấm "+ Thêm/Cập nhật" để lưu.`, 'success');
 }
 
 document.getElementById('dupAddAssigneeBtn').addEventListener('click', async ()=>{
